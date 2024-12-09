@@ -19,7 +19,6 @@ def get_timestamp():
 def random_sleep(duration, min_random, max_random):
     sleep_duration = duration + random.randint(min_random, max_random)
     print(f"{get_timestamp()} Sleeping for {sleep_duration} seconds")
-
     time.sleep(sleep_duration)
 
 
@@ -69,18 +68,43 @@ def show_help():
     print("Usage:")
     print("  'python3 auto.py'               :  Runs the automessenger. Type in the wait time and take a back seat.")
     print("  'python3 auto.py --config'      :  Configure settings.")
-    print("  'python3 auto.py --setC'  :  Set channel to send message to. Including Channel ID and Channel URL")
+    print("  'python3 auto.py --setC'        :  Set channel to send message to. Including Channel ID and Channel URL")
     print("  'python3 auto.py --help'        :  Show help")
 
 
 def send_message(conn, channel_id, message_data, header_data):
+    """
+    Sends a message and returns the ID of the sent message.
+    """
     try:
         conn.request("POST", f"/api/v6/channels/{channel_id}/messages", message_data, header_data)
         resp = conn.getresponse()
         if 199 < resp.status < 300:
-            print(f"{get_timestamp()} Message {message_data} sent!")
+            response_data = json.loads(resp.read())
+            message_id = response_data["id"]
+            print(f"{get_timestamp()} Message {message_data} sent! ID: {message_id}")
+            return message_id
+        else:
+            print(f"{get_timestamp()} Failed to send message. Status: {resp.status}")
+            return None
     except Exception as e:
         print(f"{get_timestamp()} Error sending message: {e} | {message_data}")
+        return None
+
+
+def delete_message(conn, channel_id, message_id, header_data):
+    """
+    Deletes a message based on its ID.
+    """
+    try:
+        conn.request("DELETE", f"/api/v6/channels/{channel_id}/messages/{message_id}", headers=header_data)
+        resp = conn.getresponse()
+        if 199 < resp.status < 300:
+            print(f"{get_timestamp()} Message ID: {message_id} deleted successfully!")
+        else:
+            print(f"{get_timestamp()} Failed to delete message ID: {message_id}. Status: {resp.status}")
+    except Exception as e:
+        print(f"{get_timestamp()} Error deleting message ID: {message_id}: {e}")
 
 
 def get_connection():
@@ -119,7 +143,7 @@ def main():
 
     print(f"{get_timestamp()} Messages will be sent to " + header_data["referrer"] + ".")
 
-    print("Please initialise your delays and sleep time, there will be some random offsets applied as well!\n")
+    print("Please initialize your delays and sleep time, there will be some random offsets applied as well!\n")
     delay_between_messages = int(input("Delay (in seconds) between messages: "))
     sleep_time = int(input("Sleep time (in seconds): "))
 
@@ -134,13 +158,20 @@ def main():
         for message in messages:
             message_data = json.dumps({"content": message})
             conn = get_connection()
-            send_message(conn, info[3], message_data, header_data)
+            message_id = send_message(conn, info[3], message_data, header_data)
             conn.close()
+
+            # Delete the message after sending
+            if message_id:
+                time.sleep(5)  # Wait time before deletion (customizable)
+                conn = get_connection()
+                delete_message(conn, info[3], message_id, header_data)
+                conn.close()
 
             random_sleep(delay_between_messages, 1, 10)
 
         print(f"{get_timestamp()} Finished sending all messages!")
-        random_sleep(sleep_time, 20, 1200)
+        random_sleep(sleep_time, 20, 450)
 
 
 if __name__ == "__main__":
